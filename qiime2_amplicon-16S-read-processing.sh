@@ -1,5 +1,7 @@
 ## This script is run on the linux terminal and used for AMPLICON 16S PAIRED-END SEQs
 ## Qiime2 version: 2024.10 (problems may occurr w/ different version)
+## For fungal ITS paired-end seqs you only need to remove the Picrust2 section, and cp ITS primer seqs
+## For fungal ITS single-end seqs check the separate script that replaces the 'Trim, denoise, filter' section (rest stays the same)
 
 ## first set your folder path
 cd ~/PATH/TO/DIR
