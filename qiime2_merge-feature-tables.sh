@@ -1,7 +1,6 @@
 ## This script performs dataset merging, eg. f/ when you want to merge feature tables:
 ## - from different seq runs
 ## - from different primer sets
-
 conda activate qiime2-amplicon-2024.10
 
 ## (1) Merge Feature tables
