@@ -1,4 +1,32 @@
 ## ! Script requires outout files from 'qiime2_amplicon-XXX-read-processing'
+conda activate qiime2-amplicon-2024.10
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+##                 Rarefaction curves 
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## - key quality control step
+## - to determine sufficient sequencing depth for diversity 
+## - uses filtered feature table-min10.qza
+## - p-max-depth: <NUM> based on table-min10.qzv, max. sampling depth
+## - p-sampling-depth: <NUM> based on rarefaction_curves.qzv/rarefaction_exported, sampling depth where lines plateau
+ 
+qiime diversity alpha-rarefaction \
+--i-table analysis/seqs/table_min10.qza \
+--p-max-depth <NUM> \
+--p-steps 20 \
+--i-phylogeny analysis/phylogeny/rooted-tree-dada2_min10.qza \
+--m-metadata-file prereq/metadata.tsv \
+--o-visualization analysis/rarefaction_curves.qzv
+
+## - the previous command gives NO option to check RF curves individually
+## - to do so, you have to re-run the command and omit the metadata
+qiime diversity alpha-rarefaction \
+--i-table analysis/seqs/table_min10.qza \
+--p-max-depth <NUM> \
+--p-steps 20 \
+--i-phylogeny analysis/phylogeny/rooted-tree-dada2_min10.qza \
+--m-metadata-file prereq/metadata.tsv \
+--o-visualization analysis/rarefaction_curves_individually.qzv
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ##                 Diversity Testing 
