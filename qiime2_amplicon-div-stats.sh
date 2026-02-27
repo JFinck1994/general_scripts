@@ -29,7 +29,7 @@ qiime diversity alpha-rarefaction \
 --o-visualization analysis/rarefaction_curves_individually.qzv
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-##                 Diversity Testing 
+##                 Diversity metric creation 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ### compute alpha/beta diversity metrics
 qiime diversity core-metrics-phylogenetic \
@@ -50,6 +50,9 @@ qiime diversity alpha \
 --p-metric simpson \
 --o-alpha-diversity analysis/diversity/simpson_vector.qza
 
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+##                 Diversity metric export  
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ### Export alpha diversity metrics as .tsv (mv for renaming exported files to target names) 
 mkdir analysis/phyloseq/alpha-div
 
@@ -78,8 +81,11 @@ qiime tools export \
  --output-path analysis/phyloseq/alpha-div  
 mv analysis/phyloseq/alpha-div/alpha-diversity.tsv analysis/phyloseq/alpha-div/simpson.tsv
 
-### Alpha-Div Boxplots 
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+##                 Diversity metric boxplot 
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 mkdir output-vis/alpha-div
+
 qiime diversity alpha-group-significance \
 --i-alpha-diversity analysis/diversity/observed_features_vector.qza \
 --m-metadata-file prereq/metadata.tsv \
@@ -95,7 +101,9 @@ qiime diversity alpha-group-significance \
 --m-metadata-file prereq/metadata.tsv \
 --o-visualization output-vis/alpha-div/evenness_compare_groups.qzv
 
-### ANOVA testing of Alpha Diversity Measures 
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+##                 Diversity metric anova 
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ### - you must specifc metric (eg. shannon) & metadata-var to test for
 ### - metric name = file name from file.qza (eg. md-var1 could be season)
 
