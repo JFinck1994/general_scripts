@@ -23,8 +23,8 @@ cd ../
 
 ### Export merged taxa table (is saved as "taxonomy.tsv")
 qiime tools export \
- --input-path output-files/tax_assignment_silva138.2_classifier_rep_seqs_min10.qza \
- --output-path analysis/phyloseq
+--input-path output-files/tax_assignment_silva138.2_classifier_rep_seqs_min10.qza \
+--output-path analysis/phyloseq
 
 ### Export representative sequences
 ## will be named 'dna-sequences.fasta'
@@ -83,4 +83,3 @@ biom convert \
 -i phyloseq/feature-table.biom \
 -o phyloseq/asv_table_min10-lvl3.tsv \
 --to-tsv
-  
