@@ -1,4 +1,4 @@
-## ! Script requires outout files from 'qiime2_amplicon-XXX-read-processing'
+## ! Script requires output files from 'qiime2_amplicon-XXX-read-processing'
 conda activate qiime2-amplicon-2024.10
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
