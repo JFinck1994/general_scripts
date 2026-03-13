@@ -1,10 +1,8 @@
 ---
-title: "Fig. 1: Diversity patterns across one wet and dry season in two Amazon forest types"
 author: "Jessica Finck"
 date: "2026-02-01"
 output:
   pdf_document: default
-  html_document: default
 ---
 
 ```{r setup, include=FALSE}
