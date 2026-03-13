@@ -1,0 +1,244 @@
+---
+title: "Fig. 1: Diversity patterns across one wet and dry season in two Amazon forest types"
+author: "Jessica Finck"
+date: "2026-02-01"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(123)
+```
+
+This script analyses microbial community diversity – that is alpha diversity and beta diversity metrics – using the `phyloseq` and `vegan` packages. The starting point is a `phyloseq` object with your community data, or other types of compositional data (e.g. molecular data).
+
+### 1 \| Pre-processing: Define `phyloseq` objects for bacteria and fungi
+
+Prior to analysis, we have to create a `ps` object from our data. This will be used for most of the downstream analysis.
+
+**Important!** The file 'rooted_tree.nwk' is generated via QIIME2 pre-processing workflow. The detailed script can be [**found here**](https://github.com/JFinck1994/general_scripts/blob/main/qiime2_amplicon-16S-PE-read-processing.sh)**.** The step `phyloseq::phy_tree(tree_file.nwk)` is optional.
+
+```{r phyloseq, tidy=TRUE, message=FALSE, warning=FALSE, results='hide'}
+## Load dependencies
+library(readxl) # import xlsx files
+library(ape)    # import nwk files
+library(dplyr)  # data wrangling
+
+## Import data 
+otu_bac <- read_excel("BAC_silva138.2.xlsx", sheet = "asv") %>% as.data.frame()
+tax_bac <- read_excel("BAC_silva138.2.xlsx", sheet = "tax") %>% as.data.frame()
+data_bac <- read_excel("BAC_silva138.2.xlsx", sheet = "meta_all") %>% as.data.frame()
+tree_bac <- ape::read.tree("BAC_rooted_tree_dada2.nwk")
+
+otu_fun <- read_excel("FUN_UNITE10.xlsx", sheet = "asv") %>% as.data.frame()
+tax_fun <- read_excel("FUN_UNITE10.xlsx", sheet = "tax") %>% as.data.frame()
+data_fun <- read_excel("FUN_UNITE10.xlsx", sheet = "meta_all") %>% as.data.frame()
+tree_fun <- ape::read.tree("FUN_rooted_tree_dada2.nwk")
+
+## Format variable classes
+library(dplyr)  # data wrangling
+
+data_bac$site <- as.factor(data_bac$site)
+data_bac$subsite <- as.factor(data_bac$subsite)
+data_bac$season <- as.factor(data_bac$season)
+
+data_fun$site <- as.factor(data_fun$site)
+data_fun$subsite <- as.factor(data_fun$subsite)
+data_fun$season <- as.factor(data_fun$season)
+
+## Adjust taxa names  
+tax_bac$Kingdom = gsub("d__","",as.character(tax_bac$Kingdom))
+tax_bac$Phylum = gsub("p__","",as.character(tax_bac$Phylum))
+tax_bac$Class = gsub("c__","",as.character(tax_bac$Class))
+tax_bac$Order = gsub("o__","",as.character(tax_bac$Order))
+tax_bac$Family = gsub("f__","",as.character(tax_bac$Family))
+tax_bac$Genus = gsub("g__","",as.character(tax_bac$Genus))
+tax_bac$Species = gsub("s__","",as.character(tax_bac$Species))
+otu_bac <- otu_bac %>% tibble::column_to_rownames("asv")
+tax_bac <- tax_bac %>% tibble::column_to_rownames("asv")
+data_bac <- data_bac %>% tibble::column_to_rownames("smp_id")
+
+tax_fun$Kingdom = gsub("k__","",as.character(tax_fun$Kingdom))
+tax_fun$Phylum = gsub("p__","",as.character(tax_fun$Phylum))
+tax_fun$Class = gsub("c__","",as.character(tax_fun$Class))
+tax_fun$Order = gsub("o__","",as.character(tax_fun$Order))
+tax_fun$Family = gsub("f__","",as.character(tax_fun$Family))
+tax_fun$Genus = gsub("g__","",as.character(tax_fun$Genus))
+tax_fun$Species = gsub("s__","",as.character(tax_fun$Species))
+
+otu_fun <- otu_fun %>% tibble::column_to_rownames("asv")
+tax_fun <- tax_fun %>% tibble::column_to_rownames("asv")
+data_fun <- data_fun %>% tibble::column_to_rownames("smp_id")
+
+## Assemble ps objects 
+library(phyloseq)
+
+otu_bac <- as.matrix(otu_bac)
+tax_bac <- as.matrix(tax_bac)
+OTU_B = phyloseq::otu_table(otu_bac, taxa_are_rows = T)
+TAX_B = phyloseq::tax_table(tax_bac)
+samples_B = phyloseq::sample_data(data_bac)
+tree_B = phyloseq::phy_tree(tree_bac)
+ps.bac <- phyloseq::phyloseq(OTU_B, TAX_B, samples_B, tree_B)
+
+otu_fun <- as.matrix(otu_fun)
+tax_fun <- as.matrix(tax_fun)
+OTU_F = phyloseq::otu_table(otu_fun, taxa_are_rows = T)
+TAX_F = phyloseq::tax_table(tax_fun)
+samples_F = phyloseq::sample_data(data_fun)
+tree_F = phyloseq::phy_tree(tree_fun)
+ps.fun <- phyloseq::phyloseq(OTU_F, TAX_F, samples_F, tree_F)
+
+ps.bac
+ps.fun
+
+## Tidy ps objects w/ microeco
+library(microeco)
+library(file2meco)
+
+meco.fun = phyloseq2meco(ps.fun)
+meco.bac = phyloseq2meco(ps.bac)
+
+meco.bac$tax_table %>% base::subset(Kingdom == "k__Archaea" | Kingdom == "k__Bacteria")
+meco.fun$tax_table %>% base::subset(Kingdom == "k__Fungi")
+
+meco.bac$filter_pollution(taxa = c("mitochondria", "chloroplast"))
+meco.fun$filter_pollution(taxa = c("mitochondria", "chloroplast"))
+
+meco.bac$tidy_dataset()                                                         
+meco.fun$tidy_dataset()
+
+## Convert back to ps
+ps.meco.bac = meco2phyloseq(meco.bac)
+ps.meco.fun = meco2phyloseq(meco.fun)
+
+ps.bac
+ps.meco.bac
+ps.fun
+ps.meco.fun
+
+## Remove DSTB
+ps.meco.bac <- prune_samples(sample_names(ps.meco.bac) != "DSTB", ps.meco.bac)
+
+## Normalize
+library(microbiomeMarker) # TSS normalization
+library(dplyr)            # data wrangling
+
+ps.bac.tss = ps.meco.bac %>% microbiomeMarker::normalize(method = "TSS")
+ps.fun.tss = ps.meco.fun %>% microbiomeMarker::normalize(method = "TSS")
+```
+
+### 2 \| Alpha diversity analysis (see other Rmd)
+
+### 3 \| Beta diversity analsis (see other Rmd)
+
+### 4 \| Other analyses
+
+#### 4.1 \| Beta nearest taxon index (beta-NTI) w/ `picante` (see other Rmd)
+
+#### 4.2 \| Beta diversity dispersion w/ `vegan`
+
+Beta diversity dispersion – aka the homogeneity of multivariate dispersions – measures *how much species composition varies within a group*. Beta dispersion is calculated as the average distance from individual samples to their group centroid or median. It is a crucial tool in ecological and microbiome studies for comparing beta diversity variability between groups, but is not to be confused with distance variability in the data.
+
+**Important!** We did not include this in the manuscript, but found it a useful tool to introduce under the umbrella of microbial diversity/community analysis regardless.
+
+```{r betadisper1, message=FALSE, warning=FALSE, results='hide', tidy=FALSE}
+## Extract & transform data for beta diversity ordination
+library(phyloseq)
+library(vegan)
+
+otu.bac = ps.meco.bac %>% phyloseq::otu_table() %>% 
+  t() %>% decostand(method = "hellinger") %>% as.data.frame()
+
+otu.fun = ps.meco.fun %>% phyloseq::otu_table() %>% 
+  t() %>% decostand(method = "hellinger") %>% as.data.frame()
+
+data.bac = data.frame(phyloseq::sample_data(ps.meco.bac))
+data.fun = data.frame(phyloseq::sample_data(ps.meco.fun))
+
+## Define grouping column
+data.bac2 = data.bac %>%
+  mutate(site = recode(site, "WSE" = "WS")) %>%
+  mutate(Group = paste(site, season, sep = "_"))
+data.bac2$Group <- as.factor(data.bac2$Group)
+
+data.fun2 = data.fun %>%
+  mutate(site = recode(site, "WSE" = "WS")) %>%
+  mutate(Group = paste(site, season, sep = "_"))
+data.fun2$Group <- as.factor(data.fun2$Group)
+
+## Calculate distance 
+euc_dist.ps.bac <- vegan::vegdist(otu.bac, method = "euclidean")
+euc_dist.ps.fun <- vegan::vegdist(otu.fun, method = "euclidean")
+
+## Calculate beta dispersion
+## - the distances these are based on are the same as used for PERMANOVA (see 3.2)
+## - in this case: hellinger-based euclidean distances 
+library(vegan)
+bd_bac <- betadisper(euc_dist.ps.bac, group = data.bac2$Group)
+bd_fun <- betadisper(euc_dist.ps.fun, group = data.fun2$Group)
+
+## Extract distance to centroid 
+bd_dist.bac <- data.frame(distance = bd_bac$distances, group = bd_bac$group)
+bd_dist.fun <- data.frame(distance = bd_fun$distances, group = bd_fun$group)
+
+## Run stats w/ ANOVA-TukeyHSD
+anova_bd.bac <- aov(distance ~ group, data = bd_dist.bac)
+anova_bd.fun <- aov(distance ~ group, data = bd_dist.fun)
+
+perm_bd.bac  <- permutest(bd_bac, permutations = 999)
+perm_bd.fun  <- permutest(bd_fun, permutations = 999)
+
+tukey_bd.bac <- TukeyHSD(anova_bd.bac)
+tukey_bd.fun <- TukeyHSD(anova_bd.fun)
+
+## Extract stats as letter display
+library(multcompView)
+letters_bd.bac <- multcompLetters4(anova_bd.bac, tukey_bd.bac)
+letters_bd.fun <- multcompLetters4(anova_bd.fun, tukey_bd.fun)
+
+## Set plotting order
+bd_dist.bac$group <- factor(bd_dist.bac$group, 
+                            levels = c("TF_dry","TF_wet","WS_dry","WS_wet"),
+                            labels = c("TF-dry","TF-wet","WS-dry","WS-wet"))
+bd_dist.fun$group <- factor(bd_dist.fun$group, 
+                            levels = c("TF_dry","TF_wet","WS_dry","WS_wet"),
+                            labels = c("TF-dry","TF-wet","WS-dry","WS-wet"))
+
+## Plot beta dispersion per group
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+
+bd_dist.bac %>%
+  ggplot(aes(x = group, y = distance, fill = group)) + 
+  geom_boxplot() + ggpubr::theme_pubr() + labs(x=NULL, y="Distance") +
+  scale_fill_manual(values = c("TF-dry" = "lightgreen","WS-dry"= "bisque",
+                               "WS-wet"= "bisque4","TF-wet"= "forestgreen")) +
+    scale_y_continuous(labels = scales::number_format(accuracy = 0.1, decimal.mark = '.')) +
+  ggpubr::theme_pubr() +
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 0.75),
+        axis.text.x = element_text(angle = 45, hjust = 1), 
+        legend.position = "bottom", 
+        legend.title = element_blank(),
+        strip.background = element_blank(), 
+        strip.text = element_text(face = "bold", size = 12)) +
+  labs(y="Beta diversity dispersion")
+
+bd_dist.fun %>%
+  ggplot(aes(x = group, y = distance, fill = group)) + 
+  geom_boxplot() + ggpubr::theme_pubr() + labs(x=NULL, y="Distance") +
+  scale_fill_manual(values = c("TF-dry" = "lightgreen","WS-dry"= "bisque",
+                               "WS-wet"= "bisque4","TF-wet"= "forestgreen")) +
+  scale_y_continuous(labels = scales::number_format(accuracy = 0.1, decimal.mark = '.')) +
+  ggpubr::theme_pubr() +
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 0.75),
+        axis.text.x = element_text(angle = 45, hjust = 1), 
+        legend.position = "bottom", 
+        legend.title = element_blank(),
+        strip.background = element_blank(), 
+        strip.text = element_text(face = "bold", size = 12)) +
+  labs(y="Beta diversity dispersion")
+```
