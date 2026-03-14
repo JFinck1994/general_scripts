@@ -1,0 +1,247 @@
+---
+title: "Fig. 1: Diversity patterns across one wet and dry season in two Amazon forest types"
+author: "Jessica Finck"
+date: "2026-02-01"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(123)
+```
+
+This script analyses microbial community diversity – that is alpha diversity and beta diversity metrics – using the `phyloseq` and `vegan` packages. The starting point is a `phyloseq` object with your community data, or other types of compositional data (e.g. molecular data).
+
+### 1 \| Pre-processing: Define `phyloseq` objects for bacteria and fungi
+
+Prior to analysis, we have to create a `ps` object from our data. This will be used for most of the downstream analysis.
+
+**Important!** The file 'rooted_tree.nwk' is generated via QIIME2 pre-processing workflow. The detailed script can be [**found here**](https://github.com/JFinck1994/general_scripts/blob/main/qiime2_amplicon-16S-PE-read-processing.sh)**.** The step `phyloseq::phy_tree(tree_file.nwk)` is optional.
+
+```{r phyloseq, tidy=TRUE, message=FALSE, warning=FALSE, results='hide'}
+## Load dependencies
+library(readxl) # import xlsx files
+library(ape)    # import nwk files
+library(dplyr)  # data wrangling
+
+## Import data 
+otu_bac <- read_excel("BAC_silva138.2.xlsx", sheet = "asv") %>% as.data.frame()
+tax_bac <- read_excel("BAC_silva138.2.xlsx", sheet = "tax") %>% as.data.frame()
+data_bac <- read_excel("BAC_silva138.2.xlsx", sheet = "meta_all") %>% as.data.frame()
+tree_bac <- ape::read.tree("BAC_rooted_tree_dada2.nwk")
+
+otu_fun <- read_excel("FUN_UNITE10.xlsx", sheet = "asv") %>% as.data.frame()
+tax_fun <- read_excel("FUN_UNITE10.xlsx", sheet = "tax") %>% as.data.frame()
+data_fun <- read_excel("FUN_UNITE10.xlsx", sheet = "meta_all") %>% as.data.frame()
+tree_fun <- ape::read.tree("FUN_rooted_tree_dada2.nwk")
+
+## Format variable classes
+library(dplyr)  # data wrangling
+
+data_bac$site <- as.factor(data_bac$site)
+data_bac$subsite <- as.factor(data_bac$subsite)
+data_bac$season <- as.factor(data_bac$season)
+
+data_fun$site <- as.factor(data_fun$site)
+data_fun$subsite <- as.factor(data_fun$subsite)
+data_fun$season <- as.factor(data_fun$season)
+
+## Adjust taxa names  
+tax_bac$Kingdom = gsub("d__","",as.character(tax_bac$Kingdom))
+tax_bac$Phylum = gsub("p__","",as.character(tax_bac$Phylum))
+tax_bac$Class = gsub("c__","",as.character(tax_bac$Class))
+tax_bac$Order = gsub("o__","",as.character(tax_bac$Order))
+tax_bac$Family = gsub("f__","",as.character(tax_bac$Family))
+tax_bac$Genus = gsub("g__","",as.character(tax_bac$Genus))
+tax_bac$Species = gsub("s__","",as.character(tax_bac$Species))
+otu_bac <- otu_bac %>% tibble::column_to_rownames("asv")
+tax_bac <- tax_bac %>% tibble::column_to_rownames("asv")
+data_bac <- data_bac %>% tibble::column_to_rownames("smp_id")
+
+tax_fun$Kingdom = gsub("k__","",as.character(tax_fun$Kingdom))
+tax_fun$Phylum = gsub("p__","",as.character(tax_fun$Phylum))
+tax_fun$Class = gsub("c__","",as.character(tax_fun$Class))
+tax_fun$Order = gsub("o__","",as.character(tax_fun$Order))
+tax_fun$Family = gsub("f__","",as.character(tax_fun$Family))
+tax_fun$Genus = gsub("g__","",as.character(tax_fun$Genus))
+tax_fun$Species = gsub("s__","",as.character(tax_fun$Species))
+
+otu_fun <- otu_fun %>% tibble::column_to_rownames("asv")
+tax_fun <- tax_fun %>% tibble::column_to_rownames("asv")
+data_fun <- data_fun %>% tibble::column_to_rownames("smp_id")
+
+## Assemble ps objects 
+library(phyloseq)
+
+otu_bac <- as.matrix(otu_bac)
+tax_bac <- as.matrix(tax_bac)
+OTU_B = phyloseq::otu_table(otu_bac, taxa_are_rows = T)
+TAX_B = phyloseq::tax_table(tax_bac)
+samples_B = phyloseq::sample_data(data_bac)
+tree_B = phyloseq::phy_tree(tree_bac)
+ps.bac <- phyloseq::phyloseq(OTU_B, TAX_B, samples_B, tree_B)
+
+otu_fun <- as.matrix(otu_fun)
+tax_fun <- as.matrix(tax_fun)
+OTU_F = phyloseq::otu_table(otu_fun, taxa_are_rows = T)
+TAX_F = phyloseq::tax_table(tax_fun)
+samples_F = phyloseq::sample_data(data_fun)
+tree_F = phyloseq::phy_tree(tree_fun)
+ps.fun <- phyloseq::phyloseq(OTU_F, TAX_F, samples_F, tree_F)
+
+ps.bac
+ps.fun
+
+## Tidy ps objects w/ microeco
+library(microeco)
+library(file2meco)
+
+meco.fun = phyloseq2meco(ps.fun)
+meco.bac = phyloseq2meco(ps.bac)
+
+meco.bac$tax_table %>% base::subset(Kingdom == "k__Archaea" | Kingdom == "k__Bacteria")
+meco.fun$tax_table %>% base::subset(Kingdom == "k__Fungi")
+
+meco.bac$filter_pollution(taxa = c("mitochondria", "chloroplast"))
+meco.fun$filter_pollution(taxa = c("mitochondria", "chloroplast"))
+
+meco.bac$tidy_dataset()                                                         
+meco.fun$tidy_dataset()
+
+## Convert back to ps
+ps.meco.bac = meco2phyloseq(meco.bac)
+ps.meco.fun = meco2phyloseq(meco.fun)
+
+ps.bac
+ps.meco.bac
+ps.fun
+ps.meco.fun
+
+## Remove DSTB
+ps.meco.bac <- prune_samples(sample_names(ps.meco.bac) != "DSTB", ps.meco.bac)
+
+## Normalize
+library(microbiomeMarker) # TSS normalization
+library(dplyr)            # data wrangling
+
+ps.bac.tss = ps.meco.bac %>% microbiomeMarker::normalize(method = "TSS")
+ps.fun.tss = ps.meco.fun %>% microbiomeMarker::normalize(method = "TSS")
+```
+
+### 2 \| Alpha diversity analysis
+
+This script compares the alpha diversity metrics between groups, and visualizes them as bar plots w/ letter display to show between-group differences. The corresponding excel file looks like this:
+
+| sampleID | metric1 | metric(n) | variable1 | variable2 | variable(n) |
+|----------|---------|-----------|-----------|-----------|-------------|
+|          |         |           |           |           |             |
+|          |         |           |           |           |             |
+|          |         |           |           |           |             |
+
+*Variables* are metadata (e.g. season, forest type, sampling site), and *metrics* are alpha diversity metrics (e.g. Shannon, Chao1, Richness). *SampleID* are the sample names that are used in the ASV feature table.
+
+```{r alphadiv1, tidy=FALSE, message=FALSE, warning=FALSE, results='hide'}
+## Import data
+library(readxl)
+bac_adiv <- read_excel("BAC_silva138.2.xlsx", sheet = "meta_div") %>% 
+  as.data.frame() %>% 
+  mutate(subsite = recode(subsite, "terrace" = "TE", "plateau" = "PL", 
+                          "campinarana" = "C1","campina" = "C2")) 
+
+fun_adiv <- read_excel("FUN_UNITE10.xlsx", sheet = "meta_div") %>% 
+  as.data.frame() %>% 
+  mutate(subsite = recode(subsite, "terrace" = "TE", "plateau" = "PL", 
+                          "campinarana" = "C1","campina" = "C2")) 
+
+## Group all possible combinations 
+bac_adiv$Group <- with(bac_adiv, interaction(subsite, season, sep = "_"))
+fun_adiv$Group <- with(fun_adiv, interaction(subsite, season, sep = "_"))
+
+## Stats as letter display
+anova_bac.shan <- aov(div_shan ~ Group, data = bac_adiv) # ANOVA
+anova_fun.shan <- aov(div_shan ~ Group, data = fun_adiv) # ANOVA
+
+tukey_bac.shan <- TukeyHSD(anova_bac.shan) # Tukey HSD Posthoc
+tukey_fun.shan <- TukeyHSD(anova_fun.shan) # Tukey HSD Posthoc
+
+library(multcompView)
+cld_bac.shan <- multcompLetters4(anova_bac.shan, tukey_bac.shan) # letter display
+cld_fun.shan <- multcompLetters4(anova_fun.shan, tukey_fun.shan) # letter display
+
+cld_bac.shan <- data.frame(Group = names(cld_bac.shan$Group$Letters), 
+                           Letters = cld_bac.shan$Group$Letters)
+cld_fun.shan <- data.frame(Group = names(cld_fun.shan$Group$Letters), 
+                           Letters = cld_fun.shan$Group$Letters)
+
+letters_bac.shan <- tidyr::separate(cld_bac.shan, Group, 
+                                    into = c("subsite", "season"), sep = "_")
+letters_fun.shan <- tidyr::separate(cld_fun.shan, Group, 
+                                    into = c("subsite", "season"), sep = "_")
+
+letters_bac.shan$site_season <- rownames(letters_bac.shan)
+letters_fun.shan$site_season <- rownames(letters_fun.shan)
+
+## Plot alpha div bar plot 
+library(dplyr)
+library(ggpubr)
+
+bac_adiv %>%
+  mutate(Group = factor(Group, levels = c("PL_dry", "PL_wet", 
+                                          "TE_dry", "TE_wet",
+                                          "C1_dry", "C1_wet", 
+                                          "C2_dry", "C2_wet"))) %>%  
+  ggbarplot("Group","div_shan", fill = "Group", color = "Group", 
+            palette = c("lightgreen","seagreen3", "lightgreen","seagreen3",
+                        "bisque2", "bisque4","bisque2", "bisque4"),       
+            position = position_dodge(0.8), 
+            add = "mean_sd", error.plot = "upper_errorbar", width = 0.7) +
+  geom_text(data = distinct(letters_bac.shan, site_season, Letters), 
+            aes(x = site_season, y = max(bac_adiv$div_shan) + 0.2, 
+                label = Letters), position = position_dodge(width = 0.8)) + 
+  labs(x=NULL, y="Shannon index") +
+  theme_pubr() + theme(panel.grid = element_blank(), legend.position = "top") +
+  ggpubr::theme_pubr() + coord_flip() +
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 0.75),
+        axis.text.x = element_text(angle = 45, hjust = 1), 
+        legend.position = "bottom", legend.title = element_blank(),
+        strip.background = element_blank(), 
+        strip.text = element_text(face = "bold", size = 12)) +
+  # Add median as square
+  stat_summary(aes(group = interaction(subsite, season)), 
+               fun = median, geom = "point", shape = 0, size = 3, fill = "black",
+               position = position_dodge(0.8)) +
+  scale_x_discrete(labels = c("PL_dry" = "PL-dry","PL_wet" = "PL-wet",
+                              "TE_dry" = "TE-dry","TE_wet" = "TE-wet",
+                              "C1_dry" = "C1-dry","C1_wet" = "C1-wet",
+                              "C2_dry" = "C2-dry","C2_wet" = "C2-wet"))
+
+fun_adiv %>%
+  mutate(Group = factor(Group, levels = c("PL_dry", "PL_wet", "TE_dry", "TE_wet",
+                                          "C1_dry", "C1_wet", "C2_dry", "C2_wet"))) %>%  
+  ggbarplot("Group","div_shan", fill = "Group", color = "Group", 
+            palette = c("lightgreen","seagreen3","lightgreen","seagreen3",
+                        "bisque2", "bisque4","bisque2", "bisque4"), 
+            position = position_dodge(0.8), 
+            add = "mean_sd", error.plot = "upper_errorbar", width = 0.7) +
+  geom_text(data = distinct(letters_bac.shan, site_season, Letters), 
+            aes(x = site_season, y = max(fun_adiv$div_shan) + 0.2, 
+                label = Letters), position = position_dodge(width = 0.8)) + 
+  labs(x=NULL, y="Shannon index") +
+  theme_pubr() + theme(panel.grid = element_blank(), legend.position = "top") +
+  ggpubr::theme_pubr() + coord_flip() +
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 0.75),
+        axis.text.x = element_text(angle = 45, hjust = 1), 
+        legend.position = "bottom", legend.title = element_blank(),
+        strip.background = element_blank(), 
+        strip.text = element_text(face = "bold", size = 12)) +
+  # Add median as square
+  stat_summary(aes(group = interaction(subsite, season)), 
+               fun = median, geom = "point", shape = 0, size = 3, fill = "black",
+               position = position_dodge(0.8)) +
+  scale_x_discrete(labels = c("PL_dry" = "PL-dry","PL_wet" = "PL-wet",
+                              "TE_dry" = "TE-dry","TE_wet" = "TE-wet",
+                              "C1_dry" = "C1-dry","C1_wet" = "C1-wet",
+                              "C2_dry" = "C2-dry","C2_wet" = "C2-wet"))
+```

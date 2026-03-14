@@ -1,0 +1,395 @@
+---
+title: "Fig. 1: Diversity patterns across one wet and dry season in two Amazon forest types"
+author: "Jessica Finck"
+date: "2026-02-01"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(123)
+```
+
+This script analyses microbial community diversity – that is alpha diversity and beta diversity metrics – using the `phyloseq` and `vegan` packages. The starting point is a `phyloseq` object with your community data, or other types of compositional data (e.g. molecular data).
+
+### 1 \| Pre-processing: Define `phyloseq` objects for bacteria and fungi
+
+Prior to analysis, we have to create a `ps` object from our data. This will be used for most of the downstream analysis.
+
+**Important!** The file 'rooted_tree.nwk' is generated via QIIME2 pre-processing workflow. The detailed script can be [**found here**](https://github.com/JFinck1994/general_scripts/blob/main/qiime2_amplicon-16S-PE-read-processing.sh)**.** The step `phyloseq::phy_tree(tree_file.nwk)` is optional.
+
+```{r phyloseq, tidy=TRUE, message=FALSE, warning=FALSE, results='hide'}
+## Load dependencies
+library(readxl) # import xlsx files
+library(ape)    # import nwk files
+library(dplyr)  # data wrangling
+
+## Import data 
+otu_bac <- read_excel("BAC_silva138.2.xlsx", sheet = "asv") %>% as.data.frame()
+tax_bac <- read_excel("BAC_silva138.2.xlsx", sheet = "tax") %>% as.data.frame()
+data_bac <- read_excel("BAC_silva138.2.xlsx", sheet = "meta_all") %>% as.data.frame()
+tree_bac <- ape::read.tree("BAC_rooted_tree_dada2.nwk")
+
+otu_fun <- read_excel("FUN_UNITE10.xlsx", sheet = "asv") %>% as.data.frame()
+tax_fun <- read_excel("FUN_UNITE10.xlsx", sheet = "tax") %>% as.data.frame()
+data_fun <- read_excel("FUN_UNITE10.xlsx", sheet = "meta_all") %>% as.data.frame()
+tree_fun <- ape::read.tree("FUN_rooted_tree_dada2.nwk")
+
+## Format variable classes
+library(dplyr)  # data wrangling
+
+data_bac$site <- as.factor(data_bac$site)
+data_bac$subsite <- as.factor(data_bac$subsite)
+data_bac$season <- as.factor(data_bac$season)
+
+data_fun$site <- as.factor(data_fun$site)
+data_fun$subsite <- as.factor(data_fun$subsite)
+data_fun$season <- as.factor(data_fun$season)
+
+## Adjust taxa names  
+tax_bac$Kingdom = gsub("d__","",as.character(tax_bac$Kingdom))
+tax_bac$Phylum = gsub("p__","",as.character(tax_bac$Phylum))
+tax_bac$Class = gsub("c__","",as.character(tax_bac$Class))
+tax_bac$Order = gsub("o__","",as.character(tax_bac$Order))
+tax_bac$Family = gsub("f__","",as.character(tax_bac$Family))
+tax_bac$Genus = gsub("g__","",as.character(tax_bac$Genus))
+tax_bac$Species = gsub("s__","",as.character(tax_bac$Species))
+otu_bac <- otu_bac %>% tibble::column_to_rownames("asv")
+tax_bac <- tax_bac %>% tibble::column_to_rownames("asv")
+data_bac <- data_bac %>% tibble::column_to_rownames("smp_id")
+
+tax_fun$Kingdom = gsub("k__","",as.character(tax_fun$Kingdom))
+tax_fun$Phylum = gsub("p__","",as.character(tax_fun$Phylum))
+tax_fun$Class = gsub("c__","",as.character(tax_fun$Class))
+tax_fun$Order = gsub("o__","",as.character(tax_fun$Order))
+tax_fun$Family = gsub("f__","",as.character(tax_fun$Family))
+tax_fun$Genus = gsub("g__","",as.character(tax_fun$Genus))
+tax_fun$Species = gsub("s__","",as.character(tax_fun$Species))
+
+otu_fun <- otu_fun %>% tibble::column_to_rownames("asv")
+tax_fun <- tax_fun %>% tibble::column_to_rownames("asv")
+data_fun <- data_fun %>% tibble::column_to_rownames("smp_id")
+
+## Assemble ps objects 
+library(phyloseq)
+
+otu_bac <- as.matrix(otu_bac)
+tax_bac <- as.matrix(tax_bac)
+OTU_B = phyloseq::otu_table(otu_bac, taxa_are_rows = T)
+TAX_B = phyloseq::tax_table(tax_bac)
+samples_B = phyloseq::sample_data(data_bac)
+tree_B = phyloseq::phy_tree(tree_bac)
+ps.bac <- phyloseq::phyloseq(OTU_B, TAX_B, samples_B, tree_B)
+
+otu_fun <- as.matrix(otu_fun)
+tax_fun <- as.matrix(tax_fun)
+OTU_F = phyloseq::otu_table(otu_fun, taxa_are_rows = T)
+TAX_F = phyloseq::tax_table(tax_fun)
+samples_F = phyloseq::sample_data(data_fun)
+tree_F = phyloseq::phy_tree(tree_fun)
+ps.fun <- phyloseq::phyloseq(OTU_F, TAX_F, samples_F, tree_F)
+
+ps.bac
+ps.fun
+
+## Tidy ps objects w/ microeco
+library(microeco)
+library(file2meco)
+
+meco.fun = phyloseq2meco(ps.fun)
+meco.bac = phyloseq2meco(ps.bac)
+
+meco.bac$tax_table %>% base::subset(Kingdom == "k__Archaea" | Kingdom == "k__Bacteria")
+meco.fun$tax_table %>% base::subset(Kingdom == "k__Fungi")
+
+meco.bac$filter_pollution(taxa = c("mitochondria", "chloroplast"))
+meco.fun$filter_pollution(taxa = c("mitochondria", "chloroplast"))
+
+meco.bac$tidy_dataset()                                                         
+meco.fun$tidy_dataset()
+
+## Convert back to ps
+ps.meco.bac = meco2phyloseq(meco.bac)
+ps.meco.fun = meco2phyloseq(meco.fun)
+
+ps.bac
+ps.meco.bac
+ps.fun
+ps.meco.fun
+
+## Remove DSTB
+ps.meco.bac <- prune_samples(sample_names(ps.meco.bac) != "DSTB", ps.meco.bac)
+
+## Normalize
+library(microbiomeMarker) # TSS normalization
+library(dplyr)            # data wrangling
+
+ps.bac.tss = ps.meco.bac %>% microbiomeMarker::normalize(method = "TSS")
+ps.fun.tss = ps.meco.fun %>% microbiomeMarker::normalize(method = "TSS")
+```
+
+### 2 \| Alpha diversity analysis (see other Rmd)
+
+### 3 \| Beta diversity analsis (see other Rmd)
+
+### 4 \| Other analyses
+
+#### 4.1 \| Beta nearest taxon index (beta-NTI) w/ `picante`
+
+**What is the beta-NTI?** It's a z-score representing how far the observed beta-MNTD deviates from the null model expectation, with a \|beta-NTI\| \> \|2\| indicating that communities are more phylogenetically different than expected (heterogeneous selection) as a result of primarily deterministic assembly processes, while a \|beta-NTI\| \< \|2\| indiates that communities are more similar than expected (homogeneous selection), due to stochastic assembly processes.
+
+In our manuscript, we used beta-NTI to compare forest groups, and whether community assembly was driven deterministically or stochastically within seasons. Hence, we first need to prepare our data again by introducing the respective grouping parameters.
+
+```{r bnti1, message=FALSE, warning=FALSE, results='hide', tidy=FALSE}
+## Load dependencies
+library(phyloseq)
+library(vegan)
+library(tidyverse)
+
+ps.meco.bac # see 1|Pre-processing
+ps.meco.fun # see 1|Pre-processing
+
+## Define forest type & season as labels 
+forest_col <- "site"
+season_col <- "season"
+
+tf_label  <- "TF"
+wse_label <- "WSE"
+
+## Subset phyloseq object by forest type 
+## - this subsetting is derived from metadata 
+## - leading to potential empty/0 taxa abundances
+## - these have to be subsequently removed 
+
+## ## Bacteria 
+ps.meco.bac_tf <- subset_samples(ps.meco.bac, get_variable(ps.meco.bac, forest_col) == tf_label)
+ps.meco.bac_tf <- prune_taxa(taxa_sums(ps.meco.bac_tf)  > 0, ps.meco.bac_tf)
+
+ps.meco.bac_ws <- subset_samples(ps.meco.bac, get_variable(ps.meco.bac, forest_col) == wse_label)
+ps.meco.bac_ws <- prune_taxa(taxa_sums(ps.meco.bac_ws) > 0, ps.meco.bac_ws)
+
+ps.meco.fun_tf <- subset_samples(ps.meco.fun, get_variable(ps.meco.fun, forest_col) == tf_label)
+ps.meco.fun_tf <- prune_taxa(taxa_sums(ps.meco.fun_tf)  > 0, ps.meco.fun_tf)
+
+ps.meco.fun_ws <- subset_samples(ps.meco.fun, get_variable(ps.meco.fun, forest_col) == wse_label)
+ps.meco.fun_ws <- prune_taxa(taxa_sums(ps.meco.fun_ws) > 0, ps.meco.fun_ws)
+```
+
+Now, we can compute the beta-NTI using the `picante` package. This is done by random tree tip shuffling, aka the phyloseq object requires a `phylo tree` – phylogenetic tree information. To simplify beta-NTI calculations, we defined a customary automated function, applicable to our subsetted `phyloseq` objects to calculate and visualize beta-NTI. The steps in the function are:
+
+1.  EXTRACT NECESSARY MATRICES
+
+    -   This is necessary for `picante::comdistnt` however, `picante::comdistnt` expects ASVs as columns
+    -   As our data currently has ASVs as rows, we need to transpose the extracted ASV table
+    -   Additionally, we must extract the phylogenetic tree, which is needed to calculate the beta-NTI
+    -   And we need to extract the sample_data because this has the grouping variable information (e.g. season)
+
+2.  SANITY CHECK
+
+    -   This step ensures we can run the function smoothly by checking if the `phylo tree` matches the ASVs
+    -   It makes sure the tree exists and is a proper `phylo tree`
+
+3.  MATCH ASVs TO TREE TIPS *(vital to beta-NTI calculation)*
+
+    -   Matches ASV table-tree tip intersection to ensure that only taxa present in both are used for calculations
+    -   Identified taxa are defined as "common" (or shared) taxa
+    -   To avoid later problems we further subset our `phyloseq` object to only shared taxa
+
+4.  COMPUTE NTI VARIABLES
+
+    -   This step first calculates the *beta-MNTD* (Mean Nearest Taxon Distance between communities)
+    -   This first part measures how phylogenetically different two samples are on average weighted by their relative abundances
+    -   Based on these calculations, a null model with repeated randomizations at the tree tips is created to investigate how the *beta-MNTD* changes under random phylogenetic relationships
+    -   This breaks the phylogenetic structure while keeping abundance structures
+    -   Using the null model, it then calculcates the mean and standard deviation of the null distances
+    -   Lastly, the *beta-NTI* is calculated by substracting the *beta-MNTD* with the mean of the distances, and dividing it with the standard deviation
+
+**Important!** We calculate beta-NTI between seasons for each forest type separately, and later combine the two forest types into one plot as shown in the manuscript.
+
+```{r bnti2, message=FALSE, warning=FALSE, results='hide', tidy=TRUE}
+## Load dependencies
+library(picante) # for ses.mntd and beta.mntd
+library(ape)
+
+## Write function to compute beta-NTI
+compute_betaNTI.season <- function(ps, nreps = 999) {
+  # STEP 1: Extract OTU table
+  otu <- as(otu_table(ps), "matrix")
+  if (taxa_are_rows(ps)) otu <- t(otu)
+  otu <- otu[rowSums(otu) > 0, , drop = FALSE]
+  samples <- rownames(otu)
+  
+  # STEP 2: Extract tree & match taxa
+  tree <- phy_tree(ps)
+  if (is.null(tree)) stop("No phylogenetic tree found in phyloseq object.")
+  shared <- intersect(colnames(otu), tree$tip.label)
+  if (length(shared) < 3) stop("Too few overlapping taxa between OTU table and tree.")
+  
+  otu <- otu[, shared, drop = FALSE]
+  tree <- ape::keep.tip(tree, shared)
+  otu <- otu[, tree$tip.label, drop = FALSE]
+  
+  # STEP 3: Observed beta-MNTD
+  beta_mntd_obs <- picante::comdistnt(otu, cophenetic(tree), abundance.weighted = TRUE)
+  beta_mntd_obs <- as.matrix(beta_mntd_obs)
+  samples <- rownames(beta_mntd_obs)
+  beta_mntd_obs <- beta_mntd_obs[samples, samples]
+  
+  # STEP 4: Null model (manual repetitions)
+  null_list <- list()
+  for (i in seq_len(nreps)) {
+    tree_rand <- picante::tipShuffle(tree)
+    mat <- picante::comdistnt(otu, cophenetic(tree_rand), abundance.weighted = TRUE)
+    mat <- as.matrix(mat)
+    mat <- mat[rownames(beta_mntd_obs), colnames(beta_mntd_obs)]
+    null_list[[i]] <- mat
+  }
+  
+  # STEP 5: Compute mean and SD
+  mean_null <- Reduce("+", null_list) / nreps
+  sd_null <- sqrt(Reduce("+", lapply(null_list, function(x) (x - mean_null)^2)) / nreps)
+  
+  # STEP 6: Compute beta-NTI
+  betaNTI <- (beta_mntd_obs - mean_null) / sd_null
+  
+  # STEP 7: Subset by season
+  sd_meta <- as(sample_data(ps), "data.frame")
+  if (!(season_col %in% colnames(sd_meta))) stop(paste0("Column '", season_col, "' not found in sample_data."))
+  
+  drought_samples <- rownames(sd_meta)[sd_meta[[season_col]] == "dry"]
+  control_samples <- rownames(sd_meta)[sd_meta[[season_col]] == "wet"]
+  
+  # STEP 8: Prepare output table
+  library(reshape2)
+  betaNTI_df <- melt(betaNTI, varnames = c("Sample1", "Sample2"), value.name = "betaNTI")
+  
+  betaNTI_df$Season1 <- sd_meta[[season_col]][match(betaNTI_df$Sample1, rownames(sd_meta))]
+  betaNTI_df$Season2 <- sd_meta[[season_col]][match(betaNTI_df$Sample2, rownames(sd_meta))]
+  
+  betaNTI_df$Comparison <- NA
+  betaNTI_df$Comparison[betaNTI_df$Season1 == "dry" & betaNTI_df$Season2 == "dry"] <- "Dry (Within-season)"
+  betaNTI_df$Comparison[betaNTI_df$Season1 == "wet" & betaNTI_df$Season2 == "wet"] <- "Wet (Within-season)"
+  betaNTI_df$Comparison[betaNTI_df$Season1 != betaNTI_df$Season2] <- "Between-season"
+  
+  # STEP 9: Fraction deterministic
+  drought_vs_control <- betaNTI[drought_samples, control_samples]
+  frac_deterministic <- sum(abs(drought_vs_control) > 2, na.rm = TRUE) / length(drought_vs_control)
+  message(sprintf("Fraction deterministic (|beta-NTI| > 2) = %.2f", frac_deterministic))
+  
+  # Return tidy beta-NTI table
+  return(betaNTI_df)
+}
+
+## Calculate beta-NTI within each forest type 
+betaNTI.bac_tf  = compute_betaNTI.season(ps.meco.bac_tf, nreps = 999)
+betaNTI.bac_wse = compute_betaNTI.season(ps.meco.bac_ws, nreps = 999)
+
+betaNTI.fun_tf  = compute_betaNTI.season(ps.meco.fun_tf, nreps = 999)
+betaNTI.fun_wse = compute_betaNTI.season(ps.meco.fun_ws, nreps = 999)
+```
+
+After computing the beta-NTI of each season per forest type, we have to clean up the beta-NTI dataframe for subsequent plotting. We use another customary function to do so. The individual steps are found in the code below.
+
+```{r bnti3, message=FALSE, warning=FALSE, results='hide', tidy=TRUE}
+## Write function to clean up beta-NTI dataframe 
+clean_betaNTI.season <- function(ps, betaNTI_df) {
+  # Ensure sample_data is a data frame
+  sd <- as(sample_data(ps), "data.frame")
+  if (!(season_col %in% colnames(sd))) {
+    stop(paste0("Column '", season_col, "' not found in sample_data."))
+  }
+  
+  # Define sample groups
+  drought_samples <- rownames(sd)[sd[[season_col]] == "dry"]
+  control_samples <- rownames(sd)[sd[[season_col]] == "wet"]
+  all_samples <- c(drought_samples, control_samples)
+  
+  # Filter to only relevant samples
+  betaNTI_df <- subset(betaNTI_df, Sample1 %in% all_samples & Sample2 %in% all_samples)
+  
+  # Remove self-comparisons (Sample1 == Sample2)
+  betaNTI_df <- betaNTI_df[betaNTI_df$Sample1 != betaNTI_df$Sample2, ]
+  
+  # Remove duplicate pairs (since beta-NTI is symmetric)
+  betaNTI_df <- betaNTI_df[!duplicated(t(apply(betaNTI_df[, 1:2], 1, sort))), ]
+  
+  # Return cleaned data frame
+  return(betaNTI_df)
+}
+
+## Clean up beta-NTI dataframe for plotting 
+betaNTI.clean.bac_tf = clean_betaNTI.season(ps.meco.bac_tf, betaNTI.bac_tf)
+betaNTI.clean.bac_wse = clean_betaNTI.season(ps.meco.bac_ws, betaNTI.bac_wse)
+betaNTI.clean.fun_tf = clean_betaNTI.season(ps.meco.fun_tf, betaNTI.fun_tf)
+betaNTI.clean.fun_wse = clean_betaNTI.season(ps.meco.fun_ws, betaNTI.fun_wse)
+```
+
+Lastly, we use another customary function to prepare the data for plotting, and then plot our beta-NTIs w/ `ggplot2`.
+
+```{r bnti4, message=FALSE, warning=FALSE, results='hide', tidy=TRUE}
+## Prepare data for plotting 
+plot_betaNTI.by.season <- function(ps, betaNTI_df, group_col = "season") {
+  library(ggplot2)
+  sd <- as(sample_data(ps), "data.frame")
+  
+  # Ensure group column exists
+  if (!(group_col %in% colnames(sd))) {
+    stop(paste0("Column '", group_col, "' not found in sample_data."))
+  }
+  
+  # Assign group info to each sample pair
+  betaNTI_df$Group1 <- sd[[group_col]][match(betaNTI_df$Sample1, rownames(sd))]
+  betaNTI_df$Group2 <- sd[[group_col]][match(betaNTI_df$Sample2, rownames(sd))]
+  
+  # Keep only within-group comparisons (both samples in the same group)
+  betaNTI_within <- subset(betaNTI_df, Group1 == Group2)
+  
+  # Assign group label
+  betaNTI_within$Group <- betaNTI_within$Group1
+  
+  return(betaNTI_within)
+}
+
+betaNTI.clean.plot_bac.tf = plot_betaNTI.by.season(ps.meco.bac_tf, betaNTI.clean.bac_tf, group_col = "season")
+betaNTI.clean.plot_bac.wse = plot_betaNTI.by.season(ps.meco.bac_ws, betaNTI.clean.bac_wse, group_col = "season")
+betaNTI.clean.plot_fun.tf = plot_betaNTI.by.season(ps.meco.fun_tf, betaNTI.clean.fun_tf, group_col = "season")
+betaNTI.clean.plot_fun.wse = plot_betaNTI.by.season(ps.meco.fun_ws, betaNTI.clean.fun_wse, group_col = "season")
+
+## Plot boxplot
+library(ggplot2)
+ 
+ggplot(betaNTI.clean.plot_bac.tf, aes(x=Group, y=betaNTI)) +
+  geom_boxplot(outlier.colour = "red") + 
+  geom_hline(yintercept=c(-2,2), linetype="dashed", color="red") +
+  ylab("beta-NTI") + xlab("") + 
+  ggpubr::theme_pubr() + 
+  coord_cartesian(ylim = c(-5,3)) +
+  geom_jitter(color="black", alpha = 0.9, width = 0.1)
+
+ggplot(betaNTI.clean.plot_bac.wse, aes(x=Group, y=betaNTI)) +
+  geom_boxplot(outlier.colour = "red") + 
+  geom_hline(yintercept=c(-2,2), linetype="dashed", color="red") +
+  ylab("beta-NTI") + xlab("") + 
+  ggpubr::theme_pubr() + 
+  coord_cartesian(ylim = c(-5,3)) +
+  geom_jitter(color="black", alpha = 0.9, width = 0.1)
+
+ggplot(betaNTI.clean.plot_fun.tf, aes(x=Group, y=betaNTI)) +
+  geom_boxplot(outlier.colour = "red") + 
+  geom_hline(yintercept=c(-2,2), linetype="dashed", color="red") +
+  ylab("beta-NTI") + xlab("") + 
+  ggpubr::theme_pubr() + 
+  coord_cartesian(ylim = c(-5,3)) +
+  geom_jitter(color="black", alpha = 0.9, width = 0.1)
+
+ggplot(betaNTI.clean.plot_fun.wse, aes(x=Group, y=betaNTI)) +
+  geom_boxplot(outlier.colour = "red") + 
+  geom_hline(yintercept=c(-2,2), linetype="dashed", color="red") +
+  ylab("beta-NTI") + xlab("") + 
+  ggpubr::theme_pubr() + coord_cartesian(ylim = c(-5,3)) +
+  geom_jitter(color="black", alpha = 0.9, width = 0.1)
+```
+
+#### 4.2 \| Beta diversity dispersion w/ `vegan` (see other Rmd)

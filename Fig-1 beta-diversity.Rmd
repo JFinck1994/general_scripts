@@ -1,0 +1,572 @@
+---
+title: "Fig. 1: Diversity patterns across one wet and dry season in two Amazon forest types"
+author: "Jessica Finck"
+date: "2026-02-01"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(123)
+```
+
+This script analyses microbial community diversity – that is alpha diversity and beta diversity metrics – using the `phyloseq` and `vegan` packages. The starting point is a `phyloseq` object with your community data, or other types of compositional data (e.g. molecular data).
+
+### 1 \| Pre-processing: Define `phyloseq` objects for bacteria and fungi
+
+Prior to analysis, we have to create a `ps` object from our data. This will be used for most of the downstream analysis.
+
+**Important!** The file 'rooted_tree.nwk' is generated via QIIME2 pre-processing workflow. The detailed script can be [**found here**](https://github.com/JFinck1994/general_scripts/blob/main/qiime2_amplicon-16S-PE-read-processing.sh)**.** The step `phyloseq::phy_tree(tree_file.nwk)` is optional.
+
+```{r phyloseq, tidy=TRUE, message=FALSE, warning=FALSE, results='hide'}
+## Load dependencies
+library(readxl) # import xlsx files
+library(ape)    # import nwk files
+library(dplyr)  # data wrangling
+
+## Import data 
+otu_bac <- read_excel("BAC_silva138.2.xlsx", sheet = "asv") %>% as.data.frame()
+tax_bac <- read_excel("BAC_silva138.2.xlsx", sheet = "tax") %>% as.data.frame()
+data_bac <- read_excel("BAC_silva138.2.xlsx", sheet = "meta_all") %>% as.data.frame()
+tree_bac <- ape::read.tree("BAC_rooted_tree_dada2.nwk")
+
+otu_fun <- read_excel("FUN_UNITE10.xlsx", sheet = "asv") %>% as.data.frame()
+tax_fun <- read_excel("FUN_UNITE10.xlsx", sheet = "tax") %>% as.data.frame()
+data_fun <- read_excel("FUN_UNITE10.xlsx", sheet = "meta_all") %>% as.data.frame()
+tree_fun <- ape::read.tree("FUN_rooted_tree_dada2.nwk")
+
+## Format variable classes
+library(dplyr)  # data wrangling
+
+data_bac$site <- as.factor(data_bac$site)
+data_bac$subsite <- as.factor(data_bac$subsite)
+data_bac$season <- as.factor(data_bac$season)
+
+data_fun$site <- as.factor(data_fun$site)
+data_fun$subsite <- as.factor(data_fun$subsite)
+data_fun$season <- as.factor(data_fun$season)
+
+## Adjust taxa names  
+tax_bac$Kingdom = gsub("d__","",as.character(tax_bac$Kingdom))
+tax_bac$Phylum = gsub("p__","",as.character(tax_bac$Phylum))
+tax_bac$Class = gsub("c__","",as.character(tax_bac$Class))
+tax_bac$Order = gsub("o__","",as.character(tax_bac$Order))
+tax_bac$Family = gsub("f__","",as.character(tax_bac$Family))
+tax_bac$Genus = gsub("g__","",as.character(tax_bac$Genus))
+tax_bac$Species = gsub("s__","",as.character(tax_bac$Species))
+otu_bac <- otu_bac %>% tibble::column_to_rownames("asv")
+tax_bac <- tax_bac %>% tibble::column_to_rownames("asv")
+data_bac <- data_bac %>% tibble::column_to_rownames("smp_id")
+
+tax_fun$Kingdom = gsub("k__","",as.character(tax_fun$Kingdom))
+tax_fun$Phylum = gsub("p__","",as.character(tax_fun$Phylum))
+tax_fun$Class = gsub("c__","",as.character(tax_fun$Class))
+tax_fun$Order = gsub("o__","",as.character(tax_fun$Order))
+tax_fun$Family = gsub("f__","",as.character(tax_fun$Family))
+tax_fun$Genus = gsub("g__","",as.character(tax_fun$Genus))
+tax_fun$Species = gsub("s__","",as.character(tax_fun$Species))
+
+otu_fun <- otu_fun %>% tibble::column_to_rownames("asv")
+tax_fun <- tax_fun %>% tibble::column_to_rownames("asv")
+data_fun <- data_fun %>% tibble::column_to_rownames("smp_id")
+
+## Assemble ps objects 
+library(phyloseq)
+
+otu_bac <- as.matrix(otu_bac)
+tax_bac <- as.matrix(tax_bac)
+OTU_B = phyloseq::otu_table(otu_bac, taxa_are_rows = T)
+TAX_B = phyloseq::tax_table(tax_bac)
+samples_B = phyloseq::sample_data(data_bac)
+tree_B = phyloseq::phy_tree(tree_bac)
+ps.bac <- phyloseq::phyloseq(OTU_B, TAX_B, samples_B, tree_B)
+
+otu_fun <- as.matrix(otu_fun)
+tax_fun <- as.matrix(tax_fun)
+OTU_F = phyloseq::otu_table(otu_fun, taxa_are_rows = T)
+TAX_F = phyloseq::tax_table(tax_fun)
+samples_F = phyloseq::sample_data(data_fun)
+tree_F = phyloseq::phy_tree(tree_fun)
+ps.fun <- phyloseq::phyloseq(OTU_F, TAX_F, samples_F, tree_F)
+
+ps.bac
+ps.fun
+
+## Tidy ps objects w/ microeco
+library(microeco)
+library(file2meco)
+
+meco.fun = phyloseq2meco(ps.fun)
+meco.bac = phyloseq2meco(ps.bac)
+
+meco.bac$tax_table %>% base::subset(Kingdom == "k__Archaea" | Kingdom == "k__Bacteria")
+meco.fun$tax_table %>% base::subset(Kingdom == "k__Fungi")
+
+meco.bac$filter_pollution(taxa = c("mitochondria", "chloroplast"))
+meco.fun$filter_pollution(taxa = c("mitochondria", "chloroplast"))
+
+meco.bac$tidy_dataset()                                                         
+meco.fun$tidy_dataset()
+
+## Convert back to ps
+ps.meco.bac = meco2phyloseq(meco.bac)
+ps.meco.fun = meco2phyloseq(meco.fun)
+
+ps.bac
+ps.meco.bac
+ps.fun
+ps.meco.fun
+
+## Remove DSTB
+ps.meco.bac <- prune_samples(sample_names(ps.meco.bac) != "DSTB", ps.meco.bac)
+
+## Normalize
+library(microbiomeMarker) # TSS normalization
+library(dplyr)            # data wrangling
+
+ps.bac.tss = ps.meco.bac %>% microbiomeMarker::normalize(method = "TSS")
+ps.fun.tss = ps.meco.fun %>% microbiomeMarker::normalize(method = "TSS")
+```
+
+### 2 \| Alpha diversity analysis (see other Rmd)
+
+### 3 \| Beta diversity analsis
+
+#### 3.1 \| Prerequisite steps
+
+Initially, we filtered out the sample `DSTB` as stated and discussed in the manuscript (see 1 \| Pre-processing). We then extract our feature and sample data, and introduce a grouping variable for later plotting based on grouping (e.g. forest type, season). Lastly, we define a common ordination plot theme for consistency.
+
+```{r rda1, tidy=FALSE, message=FALSE, warning=FALSE, results='hide'}
+## Load dependencies
+library(dplyr)
+library(tidyr)
+library(phyloseq)
+library(vegan)
+
+## Extract & transform data for beta diversity ordination
+otu.bac = ps.meco.bac %>% phyloseq::otu_table() %>% 
+  t() %>% decostand(method = "hellinger") %>% as.data.frame()
+
+otu.fun = ps.meco.fun %>% phyloseq::otu_table() %>% 
+  t() %>% decostand(method = "hellinger") %>% as.data.frame()
+
+data.bac = data.frame(phyloseq::sample_data(ps.meco.bac))
+data.fun = data.frame(phyloseq::sample_data(ps.meco.fun))
+
+## Make grouping variable
+data.bac$Group <- paste(data.bac$site, data.bac$season, sep = "_")
+data.bac$Group <- factor(data.bac$Group, levels = c(
+  "TF_dry", "TF_wet", "WSE_dry", "WSE_wet"))
+
+data.fun$Group <- paste(data.fun$site, data.bac$season, sep = "_")
+data.fun$Group <- factor(data.fun$Group, levels = c(
+  "TF_dry", "TF_wet", "WSE_dry", "WSE_wet"))
+
+## PCOA / RDA theme 
+theme_coord <- function (base_size = 12, base_family = "", border = FALSE, margin = TRUE, 
+                         legend = c("bottom"), x.text.angle = 0) 
+{
+  half_line <- base_size/2
+  if (!is.numeric(legend)) 
+    legend <- match.arg(legend)
+  if (x.text.angle > 5) 
+    xhjust <- 1
+  else xhjust <- NULL
+  if (margin) 
+    plot.margin <- margin(half_line, half_line, half_line, half_line)
+  else plot.margin <- unit(c(0.5, 0.3, 0.3, 0.3), "mm")
+  .theme <- 
+    theme_bw(base_size = base_size, base_family = base_family) %+replace% 
+    theme(panel.border = element_rect(fill = NA, colour = "black", size = 0.7),
+          panel.grid.major = element_blank(), 
+          panel.grid.minor = element_blank(), 
+          axis.line = element_blank(), 
+          axis.text = element_text(color = "black"), 
+          legend.key = element_blank(), 
+          strip.background = element_rect(fill = "#F2F2F2", colour = "black", size = 0.7), 
+          plot.margin = plot.margin, 
+          legend.position = legend, complete = TRUE,
+          plot.title = element_text(hjust = 0.5, face = "bold", size = 16, vjust = 2))
+  if (x.text.angle != 0) 
+    .theme <- .theme + theme(axis.text.x = element_text(angle = x.text.angle, 
+                                                        hjust = xhjust))
+  .theme
+}
+```
+
+#### 3.2 \| Permutational analysis of variance (PERMANOVA) w/ `vegan`
+
+While this is a separate table in the respective manuscript (supplementary Table S2), we include PERMANOVA in this script as it is a vital part of microbial community diversity analysis. Downstream, we use the PERMANOVA results to directly plot with our ordinations. So, to show how this is done, we include PERMANOVA as part of this code script. Since we use hellinger-transformed counts for the later RDA, we use the same distance type (=*euclidean*) for PERMANOVA.
+
+```{r perm1, tidy=FALSE, message=FALSE, warning=FALSE, results='hide'}
+## Calc distance 
+library(phyloseq)
+euc_dist.ps.bac <- vegan::vegdist(otu.bac, method = "euclidean")
+euc_dist.ps.fun <- vegan::vegdist(otu.fun, method = "euclidean")
+
+## Check interaction between predictors
+betadisper(euc_dist.ps.bac, group = interaction(data.bac$season, data.bac$site))
+betadisper(euc_dist.ps.fun, group = interaction(data.fun$season, data.fun$site))
+```
+
+We then sequentially fit all variables and identify which have significant impacts on microbial community composition. For later RDA we only keep the significant-effect variables as constraints.
+
+```{r perm2, tidy=FALSE, message=FALSE, warning=FALSE, results='hide'}
+## PERMANOVA: sequentially-fitting variables
+perm.bac = vegan::adonis2(euc_dist.ps.bac ~ season * site + subsite, 
+                          data = data.bac, permutations = 999, by = "terms")
+perm.fun = vegan::adonis2(euc_dist.ps.fun ~ season * site + subsite, 
+                          data = data.fun, permutations = 999, by = "terms")
+
+perm.bac
+perm.fun
+
+## PERMANOVA: globally (same formula)
+perm.bac.global = vegan::adonis2(euc_dist.ps.bac ~ season * site + subsite, 
+                                 data = data.bac, permutations = 999)
+perm.fun.global = vegan::adonis2(euc_dist.ps.fun ~ season * site + subsite, 
+                                 data = data.fun, permutations = 999)
+perm.bac.global
+perm.fun.global
+
+## Define PERMANOVA labels for ordination plots
+perm.R2_bac <- round(perm.bac.global$R2[1], 3)
+perm.R2_fun <- round(perm.fun.global$R2[1], 3)
+
+perm.p_bac  <- round(perm.bac.global$`Pr(>F)`[1], 3)
+perm.p_fun  <- round(perm.fun.global$`Pr(>F)`[1], 3)
+
+perm.label_bac <- paste0("PERMANOVA:\nR^2 = ", perm.R2_bac, "\np = ", perm.p_bac)
+perm.label_fun <- paste0("PERMANOVA:\nRB2 = ", perm.R2_fun, "\np = ", perm.p_fun)
+```
+
+Lastly, we calculate the %Sum of Squares for later reporting in the manuscript. For this purpose, we defined a customary function to directly apply to our PERMANOVA results and retrieve %SS values.
+
+```{r perm3, tidy=FALSE, message=FALSE, warning=FALSE, results='hide'}
+## Define function to calc %SS
+get_permanova_stats <- function(adonis_obj) {
+  aov_tab <- adonis_obj
+  # Extract SS including residuals for %SS
+  total_SS <- sum(aov_tab$SumOfSqs, na.rm = TRUE)
+  # Remove residuals for table display
+  aov_tab <- aov_tab[!rownames(aov_tab) %in% c("Residual", "Total"), ]
+  Fval <- aov_tab$F
+  pval <- aov_tab$`Pr(>F)`
+  perc_SS <- round((aov_tab$SumOfSqs / total_SS) * 100, 3)
+  data.frame(
+    Term = rownames(aov_tab),
+    F_value = round(Fval, 3),
+    p_value = round(pval, 3),
+    Percent_SS = perc_SS,
+    row.names = NULL
+  )
+}
+
+## Calc %SS
+print(get_permanova_stats(perm.bac))
+print(get_permanova_stats(perm.fun))
+```
+
+#### 3.3 \| Redundancy analysis (RDA) w/ `vegan`
+
+After testing which variables (e.g. season, forest type/site, sampling location/subsite) have a significant impact on community composition using PERMANOVA, we use these variables to constrain the RDA ordination.
+
+```{r rda2, tidy=FALSE, message=FALSE, warning=FALSE, results='hide'}
+## Computed mixed models based on PERMANOVA results
+rda_model.bac = vegan::rda(otu.bac ~ season * site + subsite, data = data.bac)
+rda_model.fun = vegan::rda(otu.fun ~ season * site + subsite, data = data.fun)
+
+## Calculate RDA axis scores
+eigenvalues.bac <- summary(rda_model.bac)$concont$importance["Eigenvalue", ]
+eigenvalues.fun <- summary(rda_model.fun)$concont$importance["Eigenvalue", ]
+variance.bac <- eigenvalues.bac / sum(eigenvalues.bac)
+variance.fun <- eigenvalues.fun / sum(eigenvalues.fun)
+
+variance.bac = variance.bac %>% as.list()
+variance.fun = variance.fun %>% as.list()
+
+## RDA axis scores
+variance.bac
+variance.fun
+```
+
+Now, we can compute ordination based on the RDA models.
+
+**Important!** RDA itself is – basically – a constrained Principal Component Analysis, operating in a mathematically Euclidean space. Hence, it requires data to be normalized and transformed accordingly. If we want to use RDA, we thus have to apply either CLR transformation, rCLR transformation, or hellinger transformation, the latter being really common. Using rCLR transformation will evaluate robust Aitchison (rAitchison) distance instead. The alternative to PCA/RDA that operate in an Euclidean space is Principal Coordinate Analysis (PCoA), which is based on e.g. Bray-Curtis dissimilarity, and is commonly used in ecological studies.
+
+```{r rda3, tidy=FALSE, message=FALSE, warning=FALSE, results='hide'}
+## Extract ordination scores
+scores.bac <- scores(rda_model.bac, display = "sites")
+scores.fun <- scores(rda_model.fun, display = "sites")
+
+## Compute RDA ordination
+ordination.rda_bac <- data.frame(scores.bac, 
+                                 season = data.bac$season, 
+                                 site = data.bac$site, 
+                                 subsite = data.bac$subsite)
+ordination.rda_fun <- data.frame(scores.fun, 
+                                 season = data.fun$season, 
+                                 site = data.fun$site, 
+                                 subsite = data.fun$subsite)
+
+ordination.rda_bac$Group <- data.bac$Group
+ordination.rda_fun$Group <- data.fun$Group
+ordination.rda_bac$smpID <- rownames(data.bac)
+ordination.rda_fun$smpID <- rownames(data.fun)
+
+## Plot RDA 
+library(ggplot2) 
+
+ggplot(ordination.rda_bac, aes(x=RDA1, y=RDA2, color = Group, shape = subsite)) + 
+  geom_point(size = 5, alpha = 0.5) + theme_coord() + 
+  scale_color_manual(values = c("TF_dry" = "lightgreen", "TF_wet" = "forestgreen", 
+                                "WSE_dry" = "bisque", "WSE_wet" = "bisque4")) +
+  scale_fill_manual(values = c("TF_dry" = "lightgreen", "TF_wet" = "forestgreen", 
+                               "WSE_dry" = "bisque", "WSE_wet" = "bisque4")) +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "grey40") +
+  geom_hline(yintercept = 0, linetype = "dotted", color = "grey40") + 
+  scale_shape_manual(values=c(18, 15, 17, 16)) +
+  labs(title = "16S-ASVs", 
+       x = paste0("RDA1 (", round(variance.bac$RDA1*100, 2), "%)"), 
+       y = paste0("RDA2 (", round(variance.bac$RDA2*100, 2), "%)")) +
+  annotate("text", 
+           x = min(ordination.rda_bac$RDA1) * 1, 
+           y = min(ordination.rda_bac$RDA2) * 0.8, 
+           label = perm.label_bac, hjust = 0, size = 4) +
+  scale_x_continuous(limits = c(-0.85, 0.55), 
+                     labels = scales::number_format(accuracy = 0.1, decimal.mark = '.')) +
+  scale_y_continuous(limits = c(-0.55, 0.7), 
+                     labels = scales::number_format(accuracy = 0.1, decimal.mark = '.')) +
+  geom_text(aes(label = smpID), check_overlap = TRUE) 
+  
+ggplot(ordination.rda_fun, aes(x=RDA1, y=RDA2, color = Group, shape = subsite)) + 
+  geom_point(size = 5, alpha = 0.5) + theme_coord() + 
+  scale_color_manual(values = c("TF_dry" = "lightgreen", "TF_wet" = "forestgreen", 
+                                "WSE_dry" = "bisque", "WSE_wet" = "bisque4")) +
+  scale_fill_manual(values = c("TF_dry" = "lightgreen", "TF_wet" = "forestgreen", 
+                               "WSE_dry" = "bisque", "WSE_wet" = "bisque4")) +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "grey40") +
+  geom_hline(yintercept = 0, linetype = "dotted", color = "grey40") + 
+  scale_shape_manual(values=c(18, 15, 17, 16)) +
+  labs(title = "ITS-ASVs", 
+       x = paste0("RDA1 (", round(variance.fun$RDA1*100, 2), "%)"), 
+       y = paste0("RDA2 (", round(variance.fun$RDA2*100, 2), "%)")) +
+  annotate("text", 
+           x = min(ordination.rda_fun$RDA1) * 1, 
+           y = min(ordination.rda_fun$RDA2) * 0.8, 
+           label = perm.label_fun, hjust = 0, size = 4) +
+  scale_x_continuous(limits = c(-0.52,0.7), 
+                     labels = scales::number_format(accuracy = 0.1, decimal.mark = '.')) +
+  scale_y_continuous(limits = c(-0.85,0.5), 
+                     labels = scales::number_format(accuracy = 0.1, decimal.mark = '.')) +
+  geom_text(aes(label = smpID), check_overlap = TRUE) 
+```
+
+#### 3.4 \| Principal coordinate analysis (PCoA) w/ `vegan`
+
+While we used RDA for our manuscript, PCoA can also be used, and is commonly used, to visualize beta diversity of microbial communities. Hence, we provide a comprehensive script to run PCoA too. Here, we chose Bray-Curtis dissimilarity matrix, which is calculated based on normalized (total sum scaling) counts.
+
+```{r pcoa, tidy=FALSE, message=FALSE, warning=FALSE, results='hide'}
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(ggrepel)
+
+## Calculate distance matrix
+dist_bac <- phyloseq::distance(ps.bac.tss, method = "bray")
+dist_fun <- phyloseq::distance(ps.fun.tss, method = "bray")
+
+## Calculate ordination based on dist
+pcoa_bac <- ordinate(ps.bac.tss, method = "PCoA", distance = dist_bac)
+pcoa_fun <- ordinate(ps.fun.tss, method = "PCoA", distance = dist_fun)
+
+## Plot PCoA
+plot_ordination(ps.bac.tss, pcoa_bac, color = "Group", shape = "subsite") +
+  geom_point(aes(size = 5, alpha = 0.5)) + 
+  theme_coord() + 
+  labs(title = "16S-ASVs") + 
+  geom_vline(xintercept = 0, linetype = "dotted", color = "grey40") +
+  geom_hline(yintercept = 0, linetype = "dotted", color = "grey40") +
+  scale_shape_manual(values = c(18, 15, 17, 16)) +
+  annotate("text", 
+           x = min(pcoa_bac$Axis.1) * 0.75, 
+           y = min(pcoa_bac$Axis.2) * 0.325, 
+           label = perm.label_bac, hjust = 0, size = 4)
+
+plot_ordination(ps.fun.tss, pcoa_fun, color = "Group", shape = "subsite") +
+  geom_point(aes(size = 5, alpha = 0.5)) + 
+  theme_coord() + 
+  labs(title = "ITS-ASVs") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "grey40") +
+  geom_hline(yintercept = 0, linetype = "dotted", color = "grey40") +
+  scale_shape_manual(values = c(18, 15, 17, 16)) +
+  annotate("text", 
+           x = min(pcoa_fun$Axis.1) * 0.6, 
+           y = min(pcoa_fun$Axis.2) * 0.4, 
+           label = perm.label_fun, hjust = 0, size = 4) 
+```
+
+#### 3.5 \| Beta diversity distance
+
+After importing our data, we'll apply the filter to analyse only putative SOM-cycling taxa, creating a joint bacteria-fungi df for subsequent plotting with `ggplot2`.
+
+```{r betadiv1, message=FALSE, warning=FALSE, results='hide', tidy=FALSE}
+library(vegan)       # for distance matrix calculation
+library(ggplot2)     # for plotting
+library(dplyr)       # for data wrangling
+library(tidyr)       # for data wrangling
+library(ggsignif)    # optional, for significance marks
+
+## Already exists from step (1 | Pre-processing) 
+otu.bac # hellinger-transformed counts
+otu.fun # hellinger-transformed counts 
+dist_bac.hell <- vegdist(otu.bac, method = "euclidean")
+dist_fun.hell <- vegdist(otu.fun, method = "euclidean")
+
+## Create grouping variables
+data.bac$Group <- paste(data.bac$site, data.bac$season, sep = "_")
+data.bac$Group <- factor(data.bac$Group, levels = c("TF_dry", "TF_wet", "WSE_dry", "WSE_wet"))
+
+data.fun$Group <- paste(data.fun$site, data.bac$season, sep = "_")
+data.fun$Group <- factor(data.fun$Group, levels = c("TF_dry", "TF_wet", "WSE_dry", "WSE_wet"))
+
+data.bac$Group2 <- paste(data.bac$subsite, data.bac$season, sep = "_")
+data.bac$Group2 <- factor(data.bac$Group2, levels = c(
+  "plateau_dry","campinarana_dry","campina_dry","terrace_dry",
+  "campina_wet","campinarana_wet","plateau_wet","terrace_wet"))
+
+data.fun$Group2 <- paste(data.fun$subsite, data.bac$season, sep = "_")
+data.fun$Group2 <- factor(data.fun$Group2, levels = c(
+  "plateau_dry","campinarana_dry","campina_dry","terrace_dry",
+  "campina_wet","campinarana_wet","plateau_wet","terrace_wet"))
+
+## Create dist_df long-format 
+dist_bac.df <- as.data.frame(as.table(as.matrix(dist_bac.hell))) %>%
+  rename(sample1 = Var1, sample2 = Var2, distance = Freq) %>%
+  filter(as.character(sample1) < as.character(sample2)) %>%  # upper triangle only
+  mutate(group1 = data.bac[sample1, "Group"], group2 = data.bac[sample2, "Group"]) %>%
+  # keep only within-group distances
+  filter(group1 == group2) %>%
+  select(distance, group = group1)
+
+dist_fun.df <- as.data.frame(as.table(as.matrix(dist_fun.hell))) %>%
+  rename(sample1 = Var1, sample2 = Var2, distance = Freq) %>%
+  filter(as.character(sample1) < as.character(sample2)) %>%
+  mutate(group1 = data.fun[sample1, "Group"], group2 = data.fun[sample2, "Group"]) %>%
+  filter(group1 == group2) %>%
+  select(distance, group = group1)
+
+dist_bac.df2 <- as.data.frame(as.table(as.matrix(dist_bac.hell))) %>%
+  rename(sample1 = Var1, sample2 = Var2, distance = Freq) %>%
+  filter(as.character(sample1) < as.character(sample2)) %>%
+  mutate(group1 = data.bac[sample1, "Group2"], group2 = data.bac[sample2, "Group2"]) %>%
+  filter(group1 == group2) %>%
+  select(distance, group = group1)
+
+dist_fun.df2 <- as.data.frame(as.table(as.matrix(dist_fun.hell))) %>%
+  rename(sample1 = Var1, sample2 = Var2, distance = Freq) %>%
+  filter(as.character(sample1) < as.character(sample2)) %>%
+  mutate(group1 = data.fun[sample1, "Group2"], group2 = data.fun[sample2, "Group2"]) %>%
+  filter(group1 == group2) %>%
+  select(distance, group = group1)
+
+## Calculate stats letters
+library(multcompView) 
+anova_bac <- aov(distance ~ group, data = dist_bac.df)
+tukey_bac <- TukeyHSD(anova_bac)
+letters_bac <- multcompLetters4(anova_bac, tukey_bac)
+anova_fun <- aov(distance ~ group, data = dist_fun.df)
+tukey_fun <- TukeyHSD(anova_fun)
+letters_fun <- multcompLetters4(anova_fun, tukey_fun)
+letters_bac$group
+letters_fun$group
+
+## Set plotting order & rename to desired labels 
+dist_bac.df$group <- factor(dist_bac.df$group, 
+                            levels = c("TF_dry","TF_wet","WSE_dry","WSE_wet"),
+                            labels = c("TF-dry","TF-wet","WS-dry","WS-wet"))
+dist_fun.df$group <- factor(dist_fun.df$group, 
+                            levels = c("TF_dry","TF_wet","WSE_dry","WSE_wet"),
+                            labels = c("TF-dry","TF-wet","WS-dry","WS-wet"))
+
+dist_bac.df2$group <- factor(dist_bac.df2$group, 
+                             levels = c("plateau_dry","plateau_wet",
+                                        "terrace_dry","terrace_wet",
+                                        "campinarana_dry","campinarana_wet",
+                                        "campina_dry","campina_wet"),
+                             labels = c("PL-dry","PL-wet","TE-dry","TE-wet",
+                                        "C1-dry","C1-wet","C2-dry","C2-wet"))
+dist_fun.df2$group <- factor(dist_fun.df2$group, 
+                             levels = c("plateau_dry","plateau_wet",
+                                        "terrace_dry","terrace_wet",
+                                        "campinarana_dry","campinarana_wet",
+                                        "campina_dry","campina_wet"),
+                             labels = c("PL-dry","PL-wet","TE-dry","TE-wet",
+                                        "C1-dry","C1-wet","C2-dry","C2-wet"))
+
+## Plot as bxp (resolution = forest type)
+library(ggplot2)
+library(scales)
+
+dist_bac.df %>%
+  ggplot(aes(x = group, y = distance, fill = group)) + 
+  geom_boxplot() + 
+  ggpubr::theme_pubr() + 
+  scale_fill_manual(values = c(
+    "TF-dry" = "lightgreen","WS-dry"= "bisque",
+    "WS-wet"= "bisque4","TF-wet"= "forestgreen")) +
+  scale_y_continuous(labels = scales::number_format(accuracy = 0.1, decimal.mark = '.')) +
+  ggpubr::theme_pubr() +
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 0.75),
+        axis.text.x = element_text(angle = 0), 
+        legend.position = "bottom", legend.title = element_blank(),
+        strip.background = element_blank(), 
+        strip.text = element_text(face = "bold", size = 12)) +
+  labs(x=NULL, y="Hellinger distance") +
+  geom_jitter(aes(shape = subsite), width = 0.2, size = 2.5, color = "black", alpha = 0.5) +
+    scale_shape_manual(values = c("PL" = 17,"TE" = 16,"C1" = 15,"C2" = 18)) +
+  dist_bac.df2 %>%
+  rename(group2 = group) %>%
+  mutate(group = case_when(group2 %in% c("PL-wet", "TE-wet") ~ "TF-wet", 
+                           group2 %in% c("PL-dry", "TE-dry") ~ "TF-dry",
+                           group2 %in% c("C1-dry", "C2-dry") ~ "WS-dry", 
+                           group2 %in% c("C1-wet", "C2-wet") ~ "WS-wet", 
+                           TRUE ~ as.character(group2)),
+         subsite = case_when(grepl("^PL", group2) ~ "PL",
+                             grepl("^TE", group2) ~ "TE",
+                             grepl("^C1", group2) ~ "C1",
+                             grepl("^C2", group2) ~ "C2",TRUE ~ NA_character_)) 
+
+dist_fun.df %>%
+  ggplot(aes(x = group, y = distance, fill = group)) + 
+  geom_boxplot() + 
+  ggpubr::theme_pubr() + 
+  scale_fill_manual(values = c(
+    "TF-dry" = "lightgreen","WS-dry"= "bisque",
+    "WS-wet"= "bisque4","TF-wet"= "forestgreen")) +
+  scale_y_continuous(labels = scales::number_format(accuracy = 0.1, decimal.mark = '.')) +
+  # Panel border black
+  ggpubr::theme_pubr() +
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 0.75),
+        axis.text.x = element_text(angle = 0), 
+        legend.position = "bottom", 
+        legend.title = element_blank(),
+        strip.background = element_blank(), 
+        strip.text = element_text(face = "bold", size = 12)) +
+  labs(x=NULL, y="Hellinger distance") +
+  geom_jitter(aes(shape = subsite), width = 0.2, size = 2.5, color = "black", alpha = 0.5) +
+  scale_shape_manual(values = c("PL" = 17,"TE" = 16,"C1" = 15,"C2" = 18)) +
+  dist_fun.df2 %>%
+  rename(group2 = group) %>%
+  mutate(group = case_when(group2 %in% c("PL-wet", "TE-wet") ~ "TF-wet", 
+                           group2 %in% c("PL-dry", "TE-dry") ~ "TF-dry",
+                           group2 %in% c("C1-dry", "C2-dry") ~ "WS-dry", 
+                           group2 %in% c("C1-wet", "C2-wet") ~ "WS-wet", 
+                           TRUE ~ as.character(group2)),
+         subsite = case_when(grepl("^PL", group2) ~ "PL",
+                             grepl("^TE", group2) ~ "TE",
+                             grepl("^C1", group2) ~ "C1",
+                             grepl("^C2", group2) ~ "C2",TRUE ~ NA_character_))
+```
