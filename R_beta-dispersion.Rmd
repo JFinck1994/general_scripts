@@ -117,9 +117,6 @@ ps.meco.bac
 ps.fun
 ps.meco.fun
 
-## Remove DSTB
-ps.meco.bac <- prune_samples(sample_names(ps.meco.bac) != "DSTB", ps.meco.bac)
-
 ## Normalize
 library(microbiomeMarker) # TSS normalization
 library(dplyr)            # data wrangling
