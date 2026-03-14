@@ -1,0 +1,73 @@
+---
+author: "Jessica Finck"
+date: "2026-02-01"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(123)
+```
+
+This script plots a nested heatmap with the pheatmap package. The structure for the XLSX file [**can be found here**](https://github.com/JFinck1994/Finck_2026_TropMiComUnderDrought/blob/main/files/pheatmap_data_example.xlsx). To calculate z-scores from scratch for your own analysis please check [**this script**](https://github.com/JFinck1994/Finck_2026_TropMiComUnderDrought/blob/main/scripts/supp_Fig-S4.Rmd). 
+
+```{r heatmap, message=FALSE, warning=FALSE, results='hide'}
+library(pheatmap)
+library(tidyverse)
+library(readxl)
+
+## Load data
+db_pheat <- read_excel("pheatmap_data_example.xlsx", sheet = "avg_values") 
+db_pheat <- db_pheat %>%
+  column_to_rownames(var = names(db_pheat)[1]) %>% 
+  as.matrix() 
+
+## Load metadata annotation
+ann_db <- read_excel("pheatmap_data_example.xlsx", sheet = "annotations") 
+ann_db <- ann_db %>%
+  column_to_rownames(var = names(ann_db)[1]) 
+
+## Load pw annotation
+enz_groups_db <- read_excel("pheatmap_data_example.xlsx", sheet = "annotations2") 
+enz_groups_db <-  enz_groups_db %>%
+  column_to_rownames(var = names(enz_groups_db)[1]) %>% 
+  select(-z_group1) %>% 
+  rename("Strategy" = z_group1_alt) %>% 
+  rename("Function" = z_group2) 
+
+## define annotation colors 
+ann_colors <- list(
+  Function = c(
+    "Carbon cycling" =  "#77ff05",
+    "Nitrogen cycling" = "#5bbe01",
+    "Sulfur cycling" = "#3e8201",
+    "Phosphorous cycling" = "#316501", 
+    "ABC transporters" = "chocolate",
+    "Osmoprotectant biosynthesis" = "chocolate1",
+    "Sporulation" = "chocolate2",
+    "Universal stress regulator" = "chocolate3",
+    "DNA protection and repair" = "chocolate4"), 
+  Strategy = c("Nutrient cycling" = "#69de02",
+               "Drought response" = "orange1"),
+  Site = c("TF-dry" = "lightgreen",
+           "TF-wet" = "lightgreen",
+           "WS-dry" = "bisque2",
+           "WS-wet" = "bisque2"),
+  Season = c("dry" = "firebrick", 
+             "wet" = "royalblue"))
+
+## heatmap
+pheatmap(db_pheat,
+         cluster_rows = T, cluster_cols = T,
+         scale = "row",
+         clustering_method = 'ward.D2',
+         colorRampPalette(c("navy", "white", "seagreen3"))(12), 
+         border_color = "gray75",
+         cutree_rows = 4, cutree_cols = 4,
+         angle_col = 45,
+         annotation_row = enz_groups_db, 
+         annotation_col = ann_db,
+         annotation_colors = ann_colors)
+```
