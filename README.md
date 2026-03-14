@@ -9,6 +9,8 @@
 
 ***beta-NTI.Rmd:** Computes group-wise beta-nearest taxon index to determine whether community assembly in that group is driven primarily deterministically or stochastically. *Core packages: picante* 
 
+***nested-heatmap.Rmd:** Ever wanted to make a pretty heatmap with 2 groups (e.g. Category, Subcategory)? Then fret no more! This is the script for you. Allows for clustering and color customization.
+
 ## Qiime2 scripts summary
 ***read-processing.sh:** Amplicon raw read processing for 16S or ITS (single-end) depending on the chosen script. This script will perform trimming, demultiplexing, removing of low-abundant ASVs (<10 reads), taxonomic assignment, and export of feature data, taxonomic data for downstream analysis in R, and (for 16S reads) PICRUSt2 analysis.  
 
